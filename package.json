@@ -1,0 +1,14 @@
+{
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/lib-dynamodb": "^3.540.0",
+    "esbuild": "^0.20.2",
+    "serverless-esbuild": "^1.52.1",
+    "serverless-iam-roles-per-function": "^3.2.0",
+    "serverless-step-functions": "^3.21.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sfn": "^3.549.0",
+    "@types/aws-lambda": "^8.10.137"
+  }
+}
