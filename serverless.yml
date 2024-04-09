@@ -8,63 +8,60 @@ provider:
   iam:
     role:
       statements:
- 
         - Effect: Allow
           Action: sqs:*
-          Resource: arn:aws:sqs:eu-north-1:533267360643:OrdersQueue
+          Resource: !GetAtt TargetSQS.Arn
 
         - Effect: "Allow"
           Action:
             - dynamodb:UpdateItem
 
             - dynamodb:GetItem
-          Resource: arn:aws:dynamodb:eu-north-1:533267360643:table/bookTable
+          Resource: !GetAtt BooksTable.Arn
 
         - Effect: "Allow"
           Action:
             - dynamodb:UpdateItem
 
             - dynamodb:GetItem
-          Resource: arn:aws:dynamodb:eu-north-1:533267360643:table/userTable
+          Resource: !GetAtt UsersTable.Arn
 
         - Effect: "Allow"
           Action:
             - states:*
-          Resource: arn:aws:states:eu-north-1:533267360643:stateMachine:StoreCheckoutFlow
+          Resource: "*"
+
+package:
+  individually: true
 
 functions:
-
   checkInventory:
-    handler: handler.checkInventory
+    handler: functions/checkInventory.handler
 
   calculateTotal:
-    handler: handler.calculateTotal
+    handler: functions/calculateTotal.handler
 
   redeemPoints:
-    handler: handler.redeemPoints
+    handler: functions/redeemPoints.handler
 
   billCustomer:
-    handler: handler.billCustomer
+    handler: functions/billCustomer.handler
 
   restoreRedeemPoints:
-    handler: handler.restoreRedeemPoints
+    handler: functions/restoreRedeemPoints.handler
 
   sqsWorker:
-    handler: handler.sqsWorker
+    handler: functions/sqsWorker.handler
     events:
       - sqs:
-          arn: arn:aws:sqs:eu-north-1:533267360643:OrdersQueue
+          arn: !GetAtt TargetSQS.Arn
           batchSize: 1
 
   restoreQuantity:
-    handler: handler.restoreQuantity
+    handler: functions/restoreQuantity.handler
 
-plugins:
-  - serverless-step-functions
-
-  - serverless-esbuild
-
-  - serverless-iam-roles-per-function
+  rearmTaskToken:
+    handler: functions/rearmTaskToken.handler
 
 stepFunctions:
   stateMachines:
@@ -138,7 +135,7 @@ stepFunctions:
             Type: Task
             Resource: arn:aws:states:::sqs:sendMessage.waitForTaskToken
             Parameters:
-              QueueUrl: https://sqs.eu-north-1.amazonaws.com/533267360643/OrdersQueue
+              QueueUrl: !Ref TargetSQS
               MessageBody:
                 Input.$: "$"
                 Token.$: "$$.Task.Token"
@@ -147,15 +144,27 @@ stepFunctions:
               - ErrorEquals: ["NoCourierAvailable"]
                 ResultPath: "$.courierError"
                 Next: RefundCustomerState
+            Next: RearmTaskTokenState
+
+          RearmTaskTokenState:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+            Parameters:
+              FunctionName: !GetAtt rearmTaskToken.Arn
+              Payload:
+                Input.$: "$"
+                Token.$: "$$.Task.Token"
+            ResultPath: "$.rearmStatus"
             Next: DispatchOrderState
 
           DispatchOrderState:
             Type: Task
             Resource: arn:aws:states:::sns:publish
             Parameters:
-              TopicArn: arn:aws:sns:eu-north-1:533267360643:NotifyCourier
+              TopicArn: !GetAtt NotifyCourierSNSTopic.TopicArn
               Message.$: "$"
             Next: DispatchedState
+            ResultPath: "$.dispatchOrderEvent"
 
           DispatchedState:
             Type: Pass
@@ -191,3 +200,17 @@ stepFunctions:
             Result: "Error in billing a customer"
             ResultPath: "$.billingStatus"
             Next: RestoreRedeemPointsState
+
+plugins:
+  - serverless-step-functions
+  - serverless-esbuild
+  - serverless-iam-roles-per-function
+  - serverless-prune-plugin
+
+resources:
+  Resources: ${file(resources.yml)}
+  Outputs:
+    MyStateMachine:
+      Description: The ARN of the state machine
+      Value:
+        Ref: StoreCheckoutFlow

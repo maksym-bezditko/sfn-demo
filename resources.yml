@@ -1,0 +1,60 @@
+NotifyCourierSNSTopic:
+  Type: AWS::SNS::Topic
+  Properties:
+    Subscription:
+      - Endpoint: supermakskalah@gmail.com
+        Protocol: email
+    TopicName: NotifyCourier
+
+TargetSQS:
+  Type: AWS::SQS::Queue
+  Properties:
+    QueueName: OrdersQueue
+    RedrivePolicy:
+      deadLetterTargetArn: !GetAtt TargetDLQ.Arn
+      maxReceiveCount: 1
+
+TargetDLQ:
+  Type: AWS::SQS::Queue
+  Properties:
+    QueueName: OrdersQueueDLQ
+
+TargetSQSPolicy:
+  Type: AWS::SQS::QueuePolicy
+  Properties:
+    PolicyDocument:
+      Statement:
+        - Action:
+            - "SQS:SendMessage"
+            - "SQS:ReceiveMessage"
+          Effect: "Allow"
+          Resource: !GetAtt TargetSQS.Arn
+          Principal:
+            Service:
+              - "events.amazonaws.com"
+    Queues:
+      - !Ref TargetSQS
+
+BooksTable:
+  Type: AWS::DynamoDB::Table
+  Properties:
+    TableName: bookTable
+    BillingMode: PAY_PER_REQUEST
+    AttributeDefinitions:
+      - AttributeName: bookId
+        AttributeType: S
+    KeySchema:
+      - AttributeName: bookId
+        KeyType: HASH
+
+UsersTable:
+  Type: AWS::DynamoDB::Table
+  Properties:
+    TableName: userTable
+    BillingMode: PAY_PER_REQUEST
+    AttributeDefinitions:
+      - AttributeName: userId
+        AttributeType: S
+    KeySchema:
+      - AttributeName: userId
+        KeyType: HASH
